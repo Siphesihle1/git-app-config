@@ -1,0 +1,173 @@
+#!/bin/bash
+
+echo "#############################################"
+echo "#                                           #"
+echo "#                 Git Setup                 #"
+echo "#                                           #"
+echo "#############################################"
+
+echo ""
+
+# Prompt the user for info
+read -p "Repository URL: " repo_url
+read -p "Github username: " git_username
+read -s -p "Github token: " token
+echo ""
+read -p "Branch name: " git_branch
+read -p "Prefix (default: $HOME): " prefix
+echo ""
+
+# Checking if prefix is empty
+if [ -z $prefix ]; then
+   prefix=$HOME
+fi
+
+# Clone the repository
+cd $prefix 2>/dev/null
+
+if [ $? -ne 0 ]; then
+   echo "ERROR: Can't access $prefix. Exiting..."
+   sleep 1
+   exit 1
+fi
+
+echo "INFO: Cloning the git repository..."
+sleep 2
+
+git clone -b $git_branch $repo_url
+
+if [ $? -eq 0 ]; then
+   echo "SUCCESS: Repository cloned successfully."
+else
+   echo "ERROR: Couldn't clone repository. Exiting..."
+   sleep 1
+   exit 1
+fi
+
+# Creating directories and files
+repo_name=$(echo $repo_url | awk -F/ '{print $5}' | awk -F. '{print $1}')
+repo_username=$(echo $repo_url | awk -F/ '{print $4}')
+repo_dir=$prefix/$repo_name
+creds_dir=$prefix/.creds
+
+echo "INFO: Creating the creds directory..."
+sleep 2
+if [ ! -d $creds_dir ]; then 
+   mkdir $creds_dir
+else
+   echo "ERROR: Directory already exists. Exiting..."
+   sleep 1
+   exit 1
+fi
+
+# Creating the user
+client_username=git-user
+client_password=$(openssl rand -base64 14 2>/dev/null || echo "v4XRTvGc5Kn+wWxrcuU=")
+
+echo "INFO: Creating user $client_username"
+sleep 2
+sudo useradd -s /bin/bash -U -m $client_username
+yes $client_password | sudo passwd $client_username 2>&1>/dev/null
+
+if [ $? -eq 0 ]; then
+   echo "SUCCESS: User created successfully."
+else
+   echo "ERROR: Couldn't create user. A user with the same username might already exist. Exiting..."
+   sleep 1
+   exit 1
+fi
+
+# Setting up the git repository
+echo "INFO: Setting up the repository..."
+sleep 2
+
+cd $repo_dir
+git remote set-url origin "https://$git_username:$token@github.com/$repo_username/$repo_name.git"
+cd $prefix
+
+# Creating user, password and prefix files
+echo "INFO: Creating user, password and prefix files..."
+sleep 2
+
+echo $client_username > $creds_dir/username
+echo $client_password > $creds_dir/password
+echo $prefix > $creds_dir/prefix
+
+# Granting the user permissions
+echo "INFO: Ganting user $client_username read permissions to the repo directory..."
+sleep 2
+
+chmod -R o=rx $repo_dir
+chmod -R o-rwx $creds_dir
+
+# Creating the logs directory
+logs_dir=$prefix/git-logs
+
+echo "INFO: Creating the logs directory..."
+sleep 2
+
+if [ ! -d $logs_dir ]; then
+   mkdir $logs_dir
+else
+   read -p "INFO: Logs directory already exists. Do you want to recreate it? (Y/N): " logs_response
+
+   if [ $logs_response -eq "Y" ]; then
+      rm -rf $logs_dir
+      mkdir $logs_dir
+   fi
+fi
+
+chmod -R o-rwx $logs_dir
+
+# Setting up the cron job
+job_dir=$prefix/cron-job
+job_script=$job_dir/git-pull
+cron_entry=$job_dir/cron-entry
+cron_setup=$job_dir/cron-setup
+
+# -- Creating the job directory
+echo "INFO: Creating the cron_job directory..."
+sleep 2
+
+if [ ! -d $job_dir ]; then
+   mkdir $job_dir
+else
+   echo "INFO: Directory already exists. Recreating cron_job directory..."
+   sleep 1
+   rm -rf $job_dir
+   mkdir $job_dir
+fi
+
+chmod -R o-rwx $job_dir
+
+# -- Generating the git pull script
+echo "INFO: Generating the git-pull.sh script..."
+sleep 2
+
+cat << EOF > $job_script
+#!/bin/bash
+
+cd $repo_dir
+git pull origin $git_branch
+EOF
+
+chmod 755 $job_script
+
+# -- Creating the job entry
+echo "INFO: Creating the cron job entry..."
+sleep 2
+
+cat << EOF > $cron_entry
+* * * * * $job_script 1>>$logs_dir/access_log 2>>$logs_dir/error_log
+EOF
+
+# -- Copying all the exisintg cron entries
+crontab -u $(whoami) -l > $cron_setup
+cat $cron_entry >> $cron_setup
+
+# -- Installing the new cron jobs
+echo "INFO: Installing the new cron jobs..."
+sleep 2
+crontab -u $(whoami) $cron_setup
+
+echo "DONE"

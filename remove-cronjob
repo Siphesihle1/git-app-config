@@ -1,0 +1,24 @@
+#!/bin/bash
+
+read -p "Prefix: " prefix
+
+cron_entry=$prefix/cron-job/cron-entry
+
+if [ ! -f $cron_entry ]; then
+   echo "ERROR: The cron entry file does not exist. Exiting..."
+   sleep 1
+   exit 1
+fi
+ 
+echo "INFO: Removing the cron job entry..."
+sleep 2
+
+crontab -u $(whoami) -l | grep -v "$(cat $cron_entry)" | crontab -u $(whoami) -
+
+if [ $? -eq 0 ]; then
+   echo "DONE"
+else
+   echo "ERROR: Couldn't remove the cron job entry. Exiting..."
+   sleep 1
+   exit 1
+fi
