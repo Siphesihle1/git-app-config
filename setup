@@ -91,7 +91,7 @@ sleep 2
 
 echo $client_username > $creds_dir/username
 echo $client_password > $creds_dir/password
-echo $prefix > $creds_dir/prefix
+echo $repo_dir > $creds_dir/prefix
 
 # Granting the user permissions
 echo "INFO: Ganting user $client_username read permissions to the repo directory..."
